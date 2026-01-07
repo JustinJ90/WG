@@ -2,125 +2,96 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>English Tower Defense</title>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser-arcade-physics.min.js"></script>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #222; font-family: sans-serif; }
-        canvas { border: 4px solid #444; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        body { margin: 0; background: #333; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #game-container { box-shadow: 0 0 50px rgba(0,0,0,0.8); border: 4px solid #000; }
     </style>
 </head>
 <body>
+<div id="game-container"></div>
 <script>
 const config = {
     type: Phaser.AUTO,
     width: 800,
-    height: 600,
+    height: 800, // 높이를 늘려 상하 레이아웃 확보
+    backgroundColor: '#34495e',
+    parent: 'game-container',
     physics: { default: 'arcade', arcade: { debug: false } },
-    scene: { preload: preload, create: create, update: update }
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }, // 해상도 문제 해결
+    scene: { preload: preload, create: create }
 };
 
 let game = new Phaser.Game(config);
 let points = 520;
-let pointText;
 let allWords = [];
-let currentQuestion;
 let buttons = [];
-let wordBox, wordText;
 
 function preload() {
-    // 1. 외부 JSON 데이터 불러오기
     this.load.json('wordData', 'words.json');
 }
 
 function create() {
-    // JSON 데이터 할당
     allWords = this.cache.json.get('wordData');
 
-    // UI 배경 (상단 퀴즈 영역)
-    this.add.rectangle(400, 80, 800, 160, 0xffccaa);
-    
-    // 포인트 UI
-    pointText = this.add.text(20, 170, 'Point: ' + points, { 
-        fontSize: '24px', 
-        fontWeight: 'bold',
-        fill: '#fff', 
-        backgroundColor: '#4a4a8a',
-        padding: { x: 10, y: 5 }
-    });
+    // 1. 상단 배경 (기획안의 살구색 영역)
+    this.add.rectangle(400, 150, 800, 300, 0xffe4c4).setOrigin(0.5);
 
-    // 하단 게임 영역 메시지
-    this.add.text(400, 400, "[ Defense Area ]\nClick to build Tower (100 pts)", { 
-        align: 'center', fill: '#666', fontSize: '20px' 
-    }).setOrigin(0.5);
+    // 2. 포인트 표시 (보라색 영역)
+    this.add.rectangle(400, 320, 800, 40, 0x9b59b6).setOrigin(0.5);
+    let pointText = this.add.text(20, 320, 'Point: ' + points, { fontSize: '24px', fontWeight: 'bold', fill: '#fff' }).setOrigin(0, 0.5);
 
-    // 타워 설치 클릭 이벤트
+    // 3. 하단 게임 영역 (초록색 맵 영역)
+    this.add.rectangle(400, 570, 800, 460, 0x2ecc71).setOrigin(0.5);
+    this.add.text(400, 570, "MAP AREA\n(Click to Build Tower)", { fontSize: '30px', align: 'center', alpha: 0.3 }).setOrigin(0.5);
+
+    // 4. 단어장 시스템
+    let wordBox = this.add.rectangle(250, 150, 300, 100, 0xffff00).setStrokeStyle(3, 0x000000);
+    let wordText = this.add.text(250, 150, '', { fontSize: '48px', fontWeight: 'bold', fill: '#000' }).setOrigin(0.5);
+
+    const showNewQuestion = () => {
+        let current = Phaser.Math.RND.pick(allWords);
+        wordText.setText(current.word);
+
+        buttons.forEach(b => b.destroy());
+        buttons = [];
+
+        // 오답 섞기
+        let distractors = allWords.filter(w => w.meaning !== current.meaning).sort(() => 0.5 - Math.random()).slice(0, 3);
+        let options = [current, ...distractors].sort(() => 0.5 - Math.random());
+
+        options.forEach((opt, i) => {
+            let x = 550 + (i % 2) * 150;
+            let y = 120 + Math.floor(i / 2) * 80;
+            
+            let btn = this.add.rectangle(x, y, 140, 60, 0xe74c3c).setInteractive({ useHandCursor: true }).setStrokeStyle(2, 0x000000);
+            let txt = this.add.text(x, y, opt.meaning, { fontSize: '20px', fill: '#fff', fontWeight: 'bold' }).setOrigin(0.5);
+            
+            btn.on('pointerdown', () => {
+                if (opt.meaning === current.meaning) {
+                    points += 100;
+                    pointText.setText('Point: ' + points);
+                    showNewQuestion();
+                } else {
+                    this.cameras.main.shake(100, 0.005);
+                }
+            });
+            buttons.push(btn, txt);
+        });
+    };
+
+    showNewQuestion();
+
+    // 타워 설치 (초록색 네모)
     this.input.on('pointerdown', (pointer) => {
-        if (pointer.y > 240 && points >= 100) {
+        if (pointer.y > 340 && points >= 100) {
             points -= 100;
             pointText.setText('Point: ' + points);
-            // 타워 생성 (이미지 대신 초록색 네모)
-            let tower = this.add.rectangle(pointer.x, pointer.y, 40, 40, 0x27ae60).setStrokeStyle(2, 0xffffff);
-            // 타워 설치 이펙트
-            this.tweens.add({ targets: tower, scale: { from: 0, to: 1 }, duration: 200 });
+            this.add.rectangle(pointer.x, pointer.y, 50, 50, 0x34495e).setStrokeStyle(2, 0xffffff);
         }
     });
-
-    // 첫 문제 출제
-    showNewQuestion(this);
-}
-
-function showNewQuestion(scene) {
-    if (!allWords || allWords.length === 0) return;
-
-    // 랜덤 정답 단어 선택
-    currentQuestion = Phaser.Math.RND.pick(allWords);
-    
-    // 단어 표시 박스 업데이트
-    if (wordBox) wordBox.destroy();
-    if (wordText) wordText.destroy();
-    
-    wordBox = scene.add.rectangle(250, 80, 250, 70, 0xffff00).setStrokeStyle(3, 0x000000);
-    wordText = scene.add.text(250, 80, currentQuestion.word, { 
-        fontSize: '36px', fontWeight: 'bold', fill: '#000' 
-    }).setOrigin(0.5);
-
-    // 보기 생성 로직
-    buttons.forEach(b => b.destroy());
-    buttons = [];
-
-    // 오답 3개 섞기
-    let distractors = allWords
-        .filter(w => w.meaning !== currentQuestion.meaning)
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 3);
-    
-    let options = [currentQuestion, ...distractors].sort(() => 0.5 - Math.random());
-
-    options.forEach((opt, i) => {
-        let x = 550 + (i % 2) * 130;
-        let y = 55 + Math.floor(i / 2) * 55;
-        
-        let btn = scene.add.rectangle(x, y, 120, 45, 0xf1948a).setInteractive({ useHandCursor: true }).setStrokeStyle(1, 0x000000);
-        let txt = scene.add.text(x, y, opt.meaning, { fontSize: '16px', fill: '#000', wordWrap: { width: 110 } }).setOrigin(0.5);
-        
-        btn.on('pointerdown', () => {
-            if (opt.meaning === currentQuestion.meaning) {
-                points += 100;
-                pointText.setText('Point: ' + points);
-                // 성공 효과 (반짝임)
-                scene.tweens.add({ targets: btn, alpha: 0.5, duration: 100, yoyo: true });
-                showNewQuestion(scene);
-            } else {
-                scene.cameras.main.shake(150, 0.005); // 틀리면 흔들림
-                btn.setFillStyle(0x999999); // 틀린 버튼 회색 처리
-            }
-        });
-        buttons.push(btn, txt);
-    });
-}
-
-function update() {
-    // 적 이동 및 타워 공격 로직은 다음 단계에서 추가 가능합니다.
 }
 </script>
 </body>
